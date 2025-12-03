@@ -1,25 +1,59 @@
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-
 pub fn solve(input: &str) -> String {
-    let ranges: Vec<_> = iter_ranges(input).collect();
-    let (s1, s2) = ranges
-        .par_iter()
-        .flat_map(|&(l, u)| (l..u).into_par_iter())
-        .map(|n| {
-            let buffer = split_number(n);
-            let invalid_level = buffer_invalid_level(&buffer);
-            match invalid_level {
-                1 => (n, n),
-                2 => (0, n),
-                _ => (0, 0),
+    let mut s1 = 0;
+    let mut s2 = 0;
+
+    for (lower, upper) in iter_ranges(input) {
+        let mut invalid = std::collections::BTreeSet::new();
+
+        iter_invalid_reps(2)
+            .take_while(move |p| *p <= upper)
+            .skip_while(move |p| *p < lower)
+            .map(|p| {
+                invalid.insert(p);
+            })
+            .count();
+
+        s1 += invalid.iter().sum::<u64>();
+
+        let n_digits = (upper.checked_ilog10().unwrap_or(0) + 1) as u64;
+
+        for rep in 3..=n_digits {
+            if rep == 20 {
+                let possibility = 11_111_111_111_111_111_111;
+                if possibility >= lower && possibility <= upper {
+                    invalid.insert(possibility);
+                }
+                continue;
             }
-        })
-        .reduce(
-            || (0, 0),
-            |sums, element| (sums.0 + element.0, sums.1 + element.1),
-        );
+            iter_invalid_reps(rep)
+                .take_while(move |p| *p <= upper)
+                .skip_while(move |p| *p < lower)
+                .map(|p| {
+                    invalid.insert(p);
+                })
+                .count();
+        }
+
+        s2 += invalid.iter().sum::<u64>();
+    }
+
+    // println!("Debug check: s1 = {}, s11 = {}", s1, s11);
+    // println!("Debug check: s2 = {}, s21 = {}", s2, s21);
 
     format!("d02/01 = {}, d02/02 = {}", s1, s2)
+}
+
+fn iter_invalid_reps(reps: u64) -> impl Iterator<Item = u64> {
+    (1..).map(move |i| repeat_number(i, reps))
+}
+
+fn repeat_number(i: u64, reps: u64) -> u64 {
+    let mut result = i;
+    let n_digits = i.checked_ilog10().unwrap_or(0) + 1;
+    for _ in 1..reps {
+        result = result * 10u64.pow(n_digits) + i;
+    }
+    result
 }
 
 fn iter_ranges(input: &str) -> impl Iterator<Item = (u64, u64)> + '_ {
@@ -36,44 +70,4 @@ fn iter_ranges(input: &str) -> impl Iterator<Item = (u64, u64)> + '_ {
             let right = splitted.1.parse::<u64>().unwrap();
             (left, right)
         })
-}
-
-fn split_number(mut n: u64) -> Vec<u8> {
-    let mut buffer = Vec::new();
-
-    while n > 0 {
-        buffer.push((n % 10) as u8);
-        n /= 10;
-    }
-
-    buffer
-}
-
-fn buffer_invalid_level(buffer: &[u8]) -> u64 {
-    let len = buffer.len();
-
-    for sublen in (1..=(len / 2)).rev() {
-        if !len.is_multiple_of(sublen) {
-            continue;
-        }
-
-        let iter_1 = buffer.chunks_exact(sublen);
-        let iter_2 = buffer.chunks_exact(sublen).skip(1);
-
-        let mut all_equal = true;
-        for (chunk_1, chunk_2) in iter_1.zip(iter_2) {
-            if chunk_1 != chunk_2 {
-                all_equal = false;
-                break;
-            }
-        }
-
-        if all_equal && len.is_multiple_of(2) && sublen == len / 2 {
-            return 1;
-        } else if all_equal {
-            return 2;
-        }
-    }
-
-    0
 }
